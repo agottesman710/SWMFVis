@@ -27,6 +27,23 @@ def coords_to_xyz(lat, lon, r=1.0):
     z = r * np.sin(lat)
     return x, y, z
 
+def cartesian_to_spherical(x, y, z):
+    """
+    Convert cartesian coordinates to spherical coordinates.
+
+    Parameters
+    ----------
+    x, y, z - cartesian coordinates
+
+    Returns
+    -----------
+    lat, lon - latitude and longitude
+    """
+    r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+    lat = np.arcsin(z / r) * 180 / np.pi
+    lon = np.arctan2(y, x) * 180 / np.pi
+    return r, lat, lon
+
 
 def set_shaders(mesh, diffuse=0, specular=0, ambient=1):
     """
@@ -110,7 +127,7 @@ def create_aurora_coords(iono, views):
     return n_aurora, s_aurora
 
 
-def update_aurora(iono, n_aurora, s_aurora, colormap='hot', minz=2, maxz=20, transparency_min=0.0):
+def update_aurora(iono, n_aurora, s_aurora, colormap='hot', minz=2, maxz=20):
     """
     Update the aurora surface plots with new iono conductivity data
 
@@ -127,17 +144,17 @@ def update_aurora(iono, n_aurora, s_aurora, colormap='hot', minz=2, maxz=20, tra
     --------------
     None
     """
-    iono.calc_bright()
+    # iono.calc_bright()
     aurora_cmap = colormaps[colormap]
     n_hall_cond = iono['n_sigmah']
     n_norm_bright = (n_hall_cond - minz) / (maxz - minz)
     n_aurora_colors = aurora_cmap(n_norm_bright)
-    n_aurora_colors[:, :, 3][n_norm_bright < transparency_min] = 0
+    # n_aurora_colors[:, :, 3][n_norm_bright < transparency_min] = 0
 
     s_hall_cond = iono['s_sigmah']
     s_norm_bright = (s_hall_cond - minz) / (maxz - minz)
     s_aurora_colors = aurora_cmap(s_norm_bright)
-    s_aurora_colors[:, :, 3][s_norm_bright < transparency_min] = 0
+    # s_aurora_colors[:, :, 3][s_norm_bright < transparency_min] = 0
 
     for i in range(len(n_aurora)):
         n_aurora[i].set_data(colors=n_aurora_colors)
