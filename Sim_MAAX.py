@@ -80,7 +80,7 @@ for i in range(args.starting_index, len(iono_files)):
     for view in sat_views:
         view.camera.transform.rotate(rotation, [1, 0, 0])
     iono = rim.Iono(ie_path + iono_files[i])
-    update_aurora(iono, n_auroras, s_auroras, maxz=args.maxz, minz=args.minz, transparency_min=0)
+    update_aurora(iono, n_auroras, s_auroras, maxz=args.maxz, minz=args.minz)
     aurora_canvas.update()
     img = aurora_canvas.render()
 
