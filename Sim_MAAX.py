@@ -15,10 +15,10 @@ parser.add_argument("path", type=str,
                     help='A path to an SWMF run directory.')
 parser.add_argument("-o", "--outdir", default='MAAXMovieFrames/', help="Set " +
                     "output file name.  Defaults to 'MAAXMovieFrames/'")
-parser.add_argument("-minz", "--minz", default=2, type=float,
+parser.add_argument("-minz", "--minz", default=4, type=float,
                     help="Sets the minimum value for the aurora colormap. " +
                     "Default is 2.")
-parser.add_argument("-maxz", "--maxz", default=20, type=float,
+parser.add_argument("-maxz", "--maxz", default=25, type=float,
                     help="Sets the maximum value for the aurora colormap. " +
                     "Default is 20.")
 parser.add_argument("-c", "--cameras", default=2, type=int,
