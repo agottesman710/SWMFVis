@@ -6,6 +6,9 @@ from matplotlib import colormaps
 from vispy.geometry.generation import create_sphere
 from spacepy.pybats.batsmath import d_dx, d_dy
 
+
+#%% Point Stuffs
+
 def coords_to_xyz(lat, lon, r=1.0):
     """
     Convert latitude and longitude to cartesian coordinates.
@@ -44,6 +47,25 @@ def cartesian_to_spherical(x, y, z):
     lon = np.arctan2(y, x) * 180 / np.pi
     return r, lat, lon
 
+def find_outer_points(x, y, z, num_bins=45):
+    r, theta, phi = cartesian_to_spherical(x, y, z)
+    min_phi = phi[r[x < 0].argmax()]
+    theta_bins = np.linspace(-90, 90, num_bins)
+    phi_bins = np.linspace(-np.abs(min_phi), np.abs(min_phi), num_bins)
+    outer_mask = np.zeros_like(x, dtype=bool)
+    for i in range(num_bins - 1):
+        for j in range(num_bins - 1):
+            steradian_mask = ((theta >= theta_bins[i]) & (theta < theta_bins[i + 1]) &
+                              (phi >= phi_bins[j]) & (phi < phi_bins[j + 1]))
+
+            if np.any(steradian_mask):
+                max_index = np.argmax(r[steradian_mask])
+                outer_mask[np.where(steradian_mask)[0][max_index]] = True
+    return outer_mask
+
+
+#%% Vispy Stuffs
+
 
 def set_shaders(mesh, diffuse=0, specular=0, ambient=1):
     """
@@ -73,7 +95,8 @@ def add_earth(view):
     scene.visuals.Sphere(radius=1, method='latitude', parent=view.scene,
                                    color=[0, 0, 1, 1])
 
-def create_canvas(num_cams=1, camera_altitude=7, camera_type='arcball'):
+def create_canvas(num_cams=1, camera_altitude=7, camera_type='arcball', resolution=(3840, 2160), interactive=False,
+                  center=(0, 0, 0), fov=20):
     """
     Create a canvas with multiple views as children of the canvas
 
@@ -88,7 +111,7 @@ def create_canvas(num_cams=1, camera_altitude=7, camera_type='arcball'):
     canvas, views - the canvas and the array of view objects for the cameras
     """
     canvas = scene.SceneCanvas(keys='interactive', bgcolor='black',
-                               size=(3840, 2160), show=True)
+                               size=resolution, show=True)
     views = []
     grid = canvas.central_widget.add_grid()
     grid.padding = 6
@@ -98,9 +121,10 @@ def create_canvas(num_cams=1, camera_altitude=7, camera_type='arcball'):
 
         grid.add_widget(views[i], 0, i)
         views[i].camera = camera_type
-        views[i].camera.interactive = False
+        views[i].camera.interactive = interactive
         views[i].camera.distance = camera_altitude
-        views[i].camera.center = (0, 0, 0)
+        views[i].camera.center = center
+        views[i].camera.fov = fov
     return canvas, views
 
 
@@ -171,6 +195,8 @@ def create_aurora(iono, views, **kwargs):
         set_shaders(s_aurora[i])
     return n_aurora, s_aurora
 
+
+#%% Spacepy Stuffs
 def find_facs(three_d):
     """
     Finds field aligned currents by using dot product to find angle between current and B-field
