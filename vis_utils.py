@@ -151,7 +151,7 @@ def create_aurora_coords(iono, views):
     return n_aurora, s_aurora
 
 
-def update_aurora(iono, n_aurora, s_aurora, colormap='hot', minz=2, maxz=20):
+def update_aurora(iono, n_aurora, s_aurora, colormap1='hot', colormap2='viridis', minz=2, maxz=20):
     """
     Update the aurora surface plots with new iono conductivity data
 
@@ -169,12 +169,13 @@ def update_aurora(iono, n_aurora, s_aurora, colormap='hot', minz=2, maxz=20):
     None
     """
     # iono.calc_bright()
-    aurora_cmap = colormaps[colormap]
+    aurora_cmap = colormaps[colormap1]
     n_hall_cond = iono['n_sigmah']
     n_norm_bright = (n_hall_cond - minz) / (maxz - minz)
     n_aurora_colors = aurora_cmap(n_norm_bright)
     # n_aurora_colors[:, :, 3][n_norm_bright < transparency_min] = 0
 
+    aurora_cmap = colormaps[colormap2]
     s_hall_cond = iono['s_sigmah']
     s_norm_bright = (s_hall_cond - minz) / (maxz - minz)
     s_aurora_colors = aurora_cmap(s_norm_bright)

@@ -7,7 +7,7 @@ from matplotlib import colormaps
 import vispy.io as io
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import vis_utils as vutil
-from vis_utils import find_facs, create_canvas, add_earth, find_outer_points
+from vis_utils import find_facs, create_canvas, add_earth, find_outer_points, create_aurora
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 import open3d as o3d
@@ -19,16 +19,19 @@ parser = ArgumentParser(description=__doc__,
                         formatter_class=RawDescriptionHelpFormatter)
 parser.add_argument("path", type=str,
                     help='A path to an SWMF run directory.')
-parser.add_argument("-wn", "--window_name", type=str,
-                    help='A path to an SWMF run directory.')
+
 args = parser.parse_args()
 path = args.path
 if path[-1] != '/':
     path += '/'
 gm_path = path + 'GM/'
+time_step = 5
 
 three_d_files = [f for f in sorted(os.listdir(gm_path)) if f.endswith('.out') and f.startswith('3d')]
-three_d = bats.IdlFile(gm_path + three_d_files[5])
+three_d = bats.IdlFile(gm_path + three_d_files[time_step])
+iono_filename = ('it' + three_d_files[time_step].split('_e')[1][2:8] + '_' +
+                 three_d_files[time_step].split('-')[1] + "_000.idl.gz")
+
 
 #%% Establish some variables
 dist = (three_d['x'] ** 2 + three_d['y'] ** 2 + three_d['z'] ** 2) ** 0.5
@@ -45,15 +48,14 @@ meshes = []
 for bool in [angle < 0.09, angle > 3.05]:
     mask = (dist > 2.5) & (dist < ib_dist) & bool
 
-    proc_dprod = dprod[mask]
-
     data = np.array([three_d['x'][mask], three_d['y'][mask], three_d['z'][mask]]).T
 
     j = (three_d['jx'][mask] ** 2 + three_d['jy'][mask] ** 2 + three_d['jz'][mask] ** 2) ** 0.5
 
-    norm_j = (proc_dprod - np.quantile(proc_dprod, 0.15)) / (np.quantile(proc_dprod, 0.85) - np.quantile(proc_dprod, 0.15))
+    norm_no_mask = (dprod - np.quantile(dprod, 0.15)) / (np.quantile(dprod, 0.85) - np.quantile(dprod, 0.15))
+    norm_j = norm_no_mask[mask]
 
-    fac_mask = ((norm_j < 0.43) | (norm_j > 0.57)) & \
+    fac_mask = ((norm_j < 0.49) | (norm_j > 0.51)) & \
                 ((three_d['Rho'][mask] < np.quantile(three_d['Rho'][mask], 0.8)) | (dist[mask] < 4))
     proc_data = data[fac_mask]
     proc_j = norm_j[fac_mask]
@@ -80,15 +82,15 @@ for bool in [angle < 0.09, angle > 3.05]:
     fac_triangles = np.array(fac_mesh.triangles)
     fac_vertices = np.array(fac_mesh.vertices)
     mesh_colors = np.array(fac_mesh.vertex_colors)
-    new_colors = np.zeros((mesh_colors.shape[0], 4))
-    for i, vertex in enumerate(fac_vertices):
-        if vertex[0] ** 2 + vertex[1] ** 2 + vertex[2] ** 2 < 4 ** 2:
-            new_colors[i] = [*mesh_colors[i, :3], 0]
-        else:
-            new_colors[i] = [*mesh_colors[i, :3], 1]
-
+    mask = (fac_vertices[fac_triangles[:, 0]][:, 0] ** 2 + fac_vertices[fac_triangles[:, 0]][:, 1] ** 2 +
+            fac_vertices[fac_triangles[:, 0]][:, 2] ** 2 > 4 ** 2) & \
+           (fac_vertices[fac_triangles[:, 1]][:, 0] ** 2 + fac_vertices[fac_triangles[:, 1]][:, 1] ** 2 +
+            fac_vertices[fac_triangles[:, 1]][:, 2] ** 2 > 4 ** 2) & \
+           (fac_vertices[fac_triangles[:, 2]][:, 0] ** 2 + fac_vertices[fac_triangles[:, 2]][:, 1] ** 2 +
+            fac_vertices[fac_triangles[:, 2]][:, 2] ** 2 > 4 ** 2)
+    fac_triangles = fac_triangles[mask]
     # Create a mesh visual
-    mesh = scene.visuals.Mesh(vertices=fac_vertices, faces=fac_triangles, vertex_colors=new_colors, shading='smooth')
+    mesh = scene.visuals.Mesh(vertices=fac_vertices, faces=fac_triangles, vertex_colors=mesh_colors, shading='smooth')
     meshes.append(mesh)
 
 
@@ -135,18 +137,6 @@ ti = three_d['P'][mask] * 1e-9 / (three_d['Rho'][mask] * 1e6 * 1.6e-19)
 
 pause_mask = (plasma_beta > 0.65) & (plasma_beta < 0.75)
 
-# unique_xs = sorted(np.unique(data[:, 0][pause_mask]))
-# yz_rads = {}
-# for x_val in unique_xs:
-#     x_mask = data[:, 0][pause_mask] == x_val
-#     yz_rads[x_val] = np.quantile(dist[mask][pause_mask][x_mask], 0.5)
-#
-# x_values = data[:, 0][pause_mask]
-# dist_values = dist[mask][pause_mask]
-# yz_rads_values = np.array([yz_rads[x] for x in x_values])
-# rads_mask = dist_values > yz_rads_values
-
-
 pause_data = data[pause_mask]
 pause_current = j[pause_mask]
 pause_density = density[pause_mask]
@@ -162,15 +152,9 @@ rgb = colors[:, :3]
 pcd = o3d.geometry.PointCloud()
 pcd.points = o3d.utility.Vector3dVector(pause_data)
 pcd.colors = o3d.utility.Vector3dVector(rgb)
-# pcd.estimate_normals()
-# o3d.visualization.draw_geometries([pcd], point_show_normal=False)
+
 
 cf_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha=20)
-# cf_mesh.triangles = o3d.utility.Vector3iVector(np.asarray(cf_mesh.triangles)[np.array(cf_mesh.triangle_normals)[:, 2] > 0])
-# pcd.estimate_normals()
-# fac_mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=6, linear_fit=True)
-# vertices_to_remove = densities < np.quantile(densities, 0.4)
-# fac_mesh.remove_vertices_by_mask(vertices_to_remove)
 
 cf_triangles = np.array(cf_mesh.triangles)
 cf_vertices = np.array(cf_mesh.vertices)
@@ -178,7 +162,7 @@ norm_x = (cf_vertices[:, 0] - cf_vertices[:, 0].min()) / (cf_vertices[:, 0].max(
 mesh_colors = np.array(cf_mesh.vertex_colors)
 new_colors = np.zeros((mesh_colors.shape[0], 4))
 new_colors[:, :3] = mesh_colors[:, :3]
-new_colors[:, 3] = norm_x
+new_colors[:, 3] = norm_x - 0.1
 
 # Create a mesh visual
 cf_mesh = scene.visuals.Mesh(vertices=cf_vertices, faces=cf_triangles, vertex_colors=new_colors, shading='smooth')
@@ -218,13 +202,17 @@ sheet_vertices = np.array(sheet_mesh.vertices)
 mesh_colors = np.array(sheet_mesh.vertex_colors)
 sheet_mesh = scene.visuals.Mesh(vertices=sheet_vertices, faces=sheet_triangles, vertex_colors=mesh_colors, shading='smooth')
 
-# o3d.visualization.draw_geometries([fac_mesh])
-
+def update_plasma_sheet():
+    if sheet_mesh.visible:
+        sheet_mesh.visible = False
+    else:
+        sheet_mesh.visible = True
 
 #%% Put Everything together
 
 # Create a canvas with a scene
-canvas = scene.SceneCanvas(keys={'f': update_fac1, 'g': update_fac2, 'c': update_cf}, show=True)
+canvas = scene.SceneCanvas(keys={'f': update_fac1, 'g': update_fac2, 'c': update_cf, 'p': update_plasma_sheet},
+                           show=True)
 view = canvas.central_widget.add_view()
 
 widget = scene.Widget(pos=(0, 0), size=(200, 200), bgcolor='k', parent=canvas.scene)
@@ -234,11 +222,18 @@ view2.camera = 'turntable'
 axis2 = scene.visuals.XYZAxis(width=2, parent=view2.scene)
 
 
-add_earth(view)
-view.add(meshes[0])
-view.add(meshes[1])
+# add_earth(view)
+
+# Create aurora
+iono = rim.Iono(path + 'IE/' + iono_filename)
+n_auroras, s_auroras = create_aurora(iono, [view], minz=5, maxz=25, colormap2='hot')
+
+
 
 view.add(sheet_mesh)
+
+view.add(meshes[0])
+view.add(meshes[1])
 
 view.add(cf_mesh)
 
