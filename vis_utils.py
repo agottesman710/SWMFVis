@@ -1,10 +1,12 @@
 import numpy as np
 from vispy import app, scene
+from vispy.io import imread
 import os
 from spacepy.pybats import bats, rim
 from matplotlib import colormaps
 from vispy.geometry.generation import create_sphere
 from spacepy.pybats.batsmath import d_dx, d_dy
+from vispy.visuals.filters import TextureFilter
 
 
 #%% Point Stuffs
@@ -67,7 +69,7 @@ def find_outer_points(x, y, z, num_bins=45):
 #%% Vispy Stuffs
 
 
-def set_shaders(mesh, diffuse=0, specular=0, ambient=1):
+def set_shaders(mesh, diffuse=0.0, specular=0.0, ambient=1.0, light_dir=(-10, 0, 0)):
     """
     Sets the shading of a mesh object based on parameters.
 
@@ -88,12 +90,23 @@ def set_shaders(mesh, diffuse=0, specular=0, ambient=1):
     ""
     """
     mesh.shading_filter.diffuse_light = (1, 1, 1, diffuse)
+    mesh.shading_filter.light_dir = light_dir
     mesh.shading_filter.ambient_light = (1, 1, 1, ambient)
     mesh.shading_filter.specular_light = (1, 1, 1, specular)
 
-def add_earth(view):
-    scene.visuals.Sphere(radius=1, method='latitude', parent=view.scene,
-                                   color=[0, 0, 1, 1])
+def add_earth(view, texture_path=None):
+    earth = scene.visuals.Sphere(radius=1, method='latitude', parent=view.scene,
+                                   color=[1, 1, 1, 1], shading='smooth', cols=2048, rows=1024)
+    if texture_path is not None:
+        texture = imread(texture_path)
+        longitude = np.linspace(0, 1, texture.shape[0])
+        latitude = np.linspace(0, 1, texture.shape[1])
+        texcoords = np.dstack(np.meshgrid(latitude, longitude)).reshape(-1, 2)
+        texcoords = np.delete(texcoords, np.arange(4096, texcoords.shape[0], 4096), axis=0)
+        texture_filter = TextureFilter(texture, texcoords=texcoords)
+        earth.mesh.attach(texture_filter)
+    set_shaders(earth.mesh, diffuse=1, ambient=0.2)
+    return earth
 
 def create_canvas(num_cams=1, camera_altitude=7, camera_type='arcball', resolution=(3840, 2160), interactive=False,
                   center=(0, 0, 0), fov=20):
@@ -151,7 +164,7 @@ def create_aurora_coords(iono, views):
     return n_aurora, s_aurora
 
 
-def update_aurora(iono, n_aurora, s_aurora, colormap1='hot', colormap2='viridis', minz=2, maxz=20):
+def update_aurora(iono, n_aurora, s_aurora, colormap1='hot', colormap2='hot', minz=2, maxz=20, transparency_min=0.0):
     """
     Update the aurora surface plots with new iono conductivity data
 
@@ -173,13 +186,15 @@ def update_aurora(iono, n_aurora, s_aurora, colormap1='hot', colormap2='viridis'
     n_hall_cond = iono['n_sigmah']
     n_norm_bright = (n_hall_cond - minz) / (maxz - minz)
     n_aurora_colors = aurora_cmap(n_norm_bright)
-    # n_aurora_colors[:, :, 3][n_norm_bright < transparency_min] = 0
+    n_aurora_colors[:, :, 3] = n_norm_bright + 0.2
+    n_aurora_colors[:, :, 3][n_norm_bright < transparency_min] = 0
 
     aurora_cmap = colormaps[colormap2]
     s_hall_cond = iono['s_sigmah']
     s_norm_bright = (s_hall_cond - minz) / (maxz - minz)
     s_aurora_colors = aurora_cmap(s_norm_bright)
-    # s_aurora_colors[:, :, 3][s_norm_bright < transparency_min] = 0
+    s_aurora_colors[:, :, 3] = s_norm_bright + 0.2
+    s_aurora_colors[:, :, 3][s_norm_bright < transparency_min] = 0
 
     for i in range(len(n_aurora)):
         n_aurora[i].set_data(colors=n_aurora_colors)
