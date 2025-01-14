@@ -7,6 +7,8 @@ from matplotlib import colormaps
 from vispy.geometry.generation import create_sphere
 from spacepy.pybats.batsmath import d_dx, d_dy
 from vispy.visuals.filters import TextureFilter
+from spacepy.coordinates import Coords
+from spacepy.time import Ticktock
 
 
 #%% Point Stuffs
@@ -30,7 +32,7 @@ def coords_to_xyz(lat, lon, r=1.0):
     x = r * np.cos(lat) * np.cos(lon)
     y = r * np.cos(lat) * np.sin(lon)
     z = r * np.sin(lat)
-    return x, y, z
+    return np.array([x, y, z])
 
 def cartesian_to_spherical(x, y, z):
     """
@@ -47,7 +49,7 @@ def cartesian_to_spherical(x, y, z):
     r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
     lat = np.arcsin(z / r) * 180 / np.pi
     lon = np.arctan2(y, x) * 180 / np.pi
-    return r, lat, lon
+    return np.array([r, lat, lon])
 
 def find_outer_points(x, y, z, num_bins=45):
     r, theta, phi = cartesian_to_spherical(x, y, z)
@@ -141,7 +143,7 @@ def create_canvas(num_cams=1, camera_altitude=7, camera_type='arcball', resoluti
     return canvas, views
 
 
-def create_aurora_coords(iono, views):
+def create_aurora_coords(iono, views, GEO=True):
     """
     Create the aurora coordinates for the aurora surface plots from iono coordinate data
 
@@ -154,8 +156,32 @@ def create_aurora_coords(iono, views):
     --------------
     n_aurora, s_aurora - arrays of the coordinates for the north and south aurora surface
     """
-    n_aurora_coords = coords_to_xyz((90 - iono['n_theta']), iono['n_psi'], r=1.02)
-    s_aurora_coords = coords_to_xyz((90 - iono['s_theta']), iono['s_psi'], r=1.02)
+    if GEO:
+        n_gsm_coords = np.array([np.full((iono['n_theta'].shape[0] * iono['n_theta'].shape[1]), 1.02),
+                                 90 - iono['n_theta'].flatten(), 180 - iono['n_psi'].flatten()]).T
+        n_gsm_coords = Coords(n_gsm_coords, 'SM', 'sph', ['Re', 'deg', 'deg'])
+        n_gsm_coords.ticks = Ticktock([iono.attrs['time']] * n_gsm_coords.long.shape[0], 'UTC')
+        n_geo_coords = n_gsm_coords.convert('GEO', 'sph')
+        n_aurora_coords = coords_to_xyz(n_geo_coords.lati, n_geo_coords.long, r=1.02)
+        n_aurora_coords = n_aurora_coords.reshape(3, iono['n_theta'].shape[0], iono['n_theta'].shape[1])
+
+        s_gsm_coords = np.array([np.full((iono['s_theta'].shape[0] * iono['s_theta'].shape[1]), 1.02),
+                                 90 - iono['s_theta'].flatten(), 180 - iono['s_psi'].flatten()]).T
+        s_gsm_coords = Coords(s_gsm_coords, 'SM', 'sph', ['Re', 'deg', 'deg'])
+        s_gsm_coords.ticks = Ticktock([iono.attrs['time']] * s_gsm_coords.long.shape[0], 'UTC')
+        s_geo_coords = s_gsm_coords.convert('GEO', 'sph')
+        s_aurora_coords = coords_to_xyz(s_geo_coords.lati, s_geo_coords.long, r=1.02)
+        s_aurora_coords = s_aurora_coords.reshape(3, iono['s_theta'].shape[0], iono['s_theta'].shape[1])
+
+        # print(n_aurora_coords[0].max(), n_aurora_coords[0].min())
+        # print(n_aurora_coords[1].max(), n_aurora_coords[1].min())
+        # print(n_aurora_coords[2].max(), n_aurora_coords[2].min())
+        # print(s_aurora_coords[0].max(), s_aurora_coords[0].min())
+        # print(s_aurora_coords[1].max(), s_aurora_coords[1].min())
+        # print(s_aurora_coords[2].max(), s_aurora_coords[2].min())
+    else:
+        n_aurora_coords = coords_to_xyz((90 - iono['n_theta']), iono['n_psi'], r=1.02)
+        s_aurora_coords = coords_to_xyz((90 - iono['s_theta']), iono['s_psi'], r=1.02)
     n_aurora = []
     s_aurora = []
     for i in range(len(views)):
