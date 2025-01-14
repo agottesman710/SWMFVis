@@ -29,8 +29,8 @@ time_step = 5
 
 three_d_files = [f for f in sorted(os.listdir(gm_path)) if f.endswith('.out') and f.startswith('3d')]
 three_d = bats.IdlFile(gm_path + three_d_files[time_step])
-iono_filename = ('it' + three_d_files[time_step].split('_e')[1][2:8] + '_' +
-                 three_d_files[time_step].split('-')[1] + "_000.idl.gz")
+iono_filename = ('it' + three_d_files[0].split('_e')[1][2:8] + '_' +
+                 three_d_files[0].split('-')[1] + "_000.idl.gz")
 
 
 #%% Establish some variables
@@ -55,7 +55,7 @@ for bool in [angle < 0.09, angle > 3.05]:
     norm_no_mask = (dprod - np.quantile(dprod, 0.15)) / (np.quantile(dprod, 0.85) - np.quantile(dprod, 0.15))
     norm_j = norm_no_mask[mask]
 
-    fac_mask = ((norm_j < 0.49) | (norm_j > 0.51)) & \
+    fac_mask = ((norm_j < 0.4) | (norm_j > 0.6)) & \
                 ((three_d['Rho'][mask] < np.quantile(three_d['Rho'][mask], 0.8)) | (dist[mask] < 4))
     proc_data = data[fac_mask]
     proc_j = norm_j[fac_mask]
@@ -95,16 +95,11 @@ for bool in [angle < 0.09, angle > 3.05]:
 
 
 def update_fac1():
-    if meshes[0].visible:
-        meshes[0].visible = False
-    else:
-        meshes[0].visible = True
+    meshes[0].visible = not meshes[0].visible
+
 
 def update_fac2():
-    if meshes[1].visible:
-        meshes[1].visible = False
-    else:
-        meshes[1].visible = True
+    meshes[1].visible = not meshes[1].visible
 
 #%% Chapman-Ferraro
 
@@ -172,16 +167,15 @@ cf_mesh.shading_filter.ambient_light = (1, 1, 1, 0)
 cf_mesh.shading_filter.specular_light = (1, 1, 1, 0)
 
 def update_cf():
-    if cf_mesh.visible:
-        cf_mesh.visible = False
-    else:
-        cf_mesh.visible = True
+    cf_mesh.visible = not cf_mesh.visible
 
 #%% Plasma sheet
 
 jy = three_d['jy'][mask] / j
+
 proc_angle = angle[mask]
-sheet_mask = (ux > 200) & (jy > 0.95) # & (plasma_beta > 5)
+bz = three_d['Bz'][mask]
+sheet_mask = (ux > 250) & (jy > 0.95)
 sheet_data = data[sheet_mask]
 sheet_current = j[sheet_mask]
 sheet_density = density[sheet_mask]
@@ -197,16 +191,20 @@ pcd.colors = o3d.utility.Vector3dVector(sheet_rgb)
 pcd.estimate_normals()
 sheet_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha=1)
 sheet_mesh = sheet_mesh.filter_smooth_taubin(number_of_iterations=20)
+triangle_clusters, cluster_n_triangles, cluster_area = (sheet_mesh.cluster_connected_triangles())
+triangle_clusters = np.asarray(triangle_clusters)
+cluster_n_triangles = np.asarray(cluster_n_triangles)
+cluster_area = np.asarray(cluster_area)
+largest_cluster_idx = cluster_n_triangles.argmax()
+triangles_to_remove = triangle_clusters != largest_cluster_idx
+sheet_mesh.remove_triangles_by_mask(triangles_to_remove)
 sheet_triangles = np.array(sheet_mesh.triangles)
 sheet_vertices = np.array(sheet_mesh.vertices)
 mesh_colors = np.array(sheet_mesh.vertex_colors)
 sheet_mesh = scene.visuals.Mesh(vertices=sheet_vertices, faces=sheet_triangles, vertex_colors=mesh_colors, shading='smooth')
 
 def update_plasma_sheet():
-    if sheet_mesh.visible:
-        sheet_mesh.visible = False
-    else:
-        sheet_mesh.visible = True
+    sheet_mesh.visible = not sheet_mesh.visible
 
 #%% Put Everything together
 
@@ -214,12 +212,12 @@ def update_plasma_sheet():
 canvas = scene.SceneCanvas(keys={'f': update_fac1, 'g': update_fac2, 'c': update_cf, 'p': update_plasma_sheet},
                            show=True)
 view = canvas.central_widget.add_view()
-
-widget = scene.Widget(pos=(0, 0), size=(200, 200), bgcolor='k', parent=canvas.scene)
+view.camera = 'turntable'
+# widget = scene.Widget(pos=(0, 0), size=(200, 200), bgcolor='k', parent=canvas.scene)
 # sub view
-view2 = widget.add_view()
-view2.camera = 'turntable'
-axis2 = scene.visuals.XYZAxis(width=2, parent=view2.scene)
+# view2 = widget.add_view()
+# view2.camera = 'turntable'
+# axis2 = scene.visuals.XYZAxis(width=2, parent=view2.scene)
 
 
 # add_earth(view)
@@ -227,7 +225,7 @@ axis2 = scene.visuals.XYZAxis(width=2, parent=view2.scene)
 # Create aurora
 iono = rim.Iono(path + 'IE/' + iono_filename)
 n_auroras, s_auroras = create_aurora(iono, [view], minz=5, maxz=25, colormap2='hot')
-
+print(iono_filename)
 
 
 view.add(sheet_mesh)
@@ -246,11 +244,31 @@ view.add(cf_mesh)
 
 
 # Set the camera
-view.camera = 'turntable'
-view.camera.center = (0, 0, 0)
-view.camera.link(view2.camera)
+# view.camera = 'turntable'
+# view.camera.center = (0, 0, 0)
+# view.camera.link(view2.camera)
 
 # Run the application
 app.run()
-
+#%% Save images
+# i = 0
+# update_fac1()
+# update_fac2()
+# update_cf()
+#
+# view.camera = 'turntable'
+# view.camera.center = (-20, 0, 0)
+# view.camera.distance = 25
+# view.camera.elevation = 0
+# view.camera.fov = 90
+# outdir = os.getcwd() + '/' + path.split('/')[-2]
+# if not os.path.exists(outdir):
+#     os.makedirs(outdir)
+# rotation = 1
+# while i * rotation < 360:
+#     img = canvas.render()
+#     io.image.imsave(f'{outdir}/frame{i:04d}.png', img)
+#     view.camera.orbit(rotation, 0)
+#     canvas.update()
+#     i += 1
 
