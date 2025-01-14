@@ -76,6 +76,7 @@ else:
 earth_rotation = 0.25
 earths = []
 light_dirs = []
+
 for j, view in enumerate(sat_views):
     view.camera.depth_value = 1
     earths.append(add_earth(view, texture_path=args.texture_path))
